@@ -6,6 +6,7 @@ echo "=== GHOST CÀI ĐẶT ĐƠN GIẢN ==="
 # Cập nhật package list
 echo "1. Cập nhật package list..."
 sudo apt update
+sudo apt install -y curl wget net-tools iproute2
 
 # Cài Docker nhanh
 echo "2. Cài Docker..."
@@ -85,107 +86,167 @@ newgrp docker << END
 docker compose up -d
 END
 
-# Kiểm tra và khắc phục
+# Kiểm tra và tối ưu
 echo ""
-echo "6. Kiểm tra hệ thống..."
-sleep 10
+echo "6. Kiểm tra và tối ưu hệ thống..."
 
-# Function kiểm tra
-check_ghost() {
-    echo "=== KIỂM TRA HỆ THỐNG ==="
+# Lấy IP công khai
+echo "📡 Lấy IP công khai..."
+PUBLIC_IP=$(curl -s --connect-timeout 10 ifconfig.me || curl -s --connect-timeout 10 ipinfo.io/ip || echo "UNKNOWN")
+
+# URLs để test
+LOCAL_URL="http://localhost:2368"
+PUBLIC_URL="http://$PUBLIC_IP:2368"
+DOMAIN_URL="http://$DOMAIN:2368"
+
+# Function kiểm tra URL
+test_url() {
+    local url=$1
+    local name=$2
     
-    # Kiểm tra Docker đang chạy
-    if ! sudo systemctl is-active --quiet docker; then
-        echo "❌ Docker chưa chạy"
-        echo "🔧 Khắc phục: sudo systemctl start docker"
-        return 1
-    else
-        echo "✅ Docker đang chạy"
-    fi
+    echo -n "🔍 Kiểm tra $name ($url)... "
     
-    # Kiểm tra container Ghost
-    if docker ps | grep -q ghost; then
-        echo "✅ Ghost container đang chạy"
-    else
-        echo "❌ Ghost container không chạy"
-        echo "🔧 Xem lỗi: cd ~/ghost && docker compose logs"
-        return 1
-    fi
+    # Test HTTP response
+    local response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$url" 2>/dev/null)
     
-    # Kiểm tra port 2368
-    if netstat -tuln | grep -q ":2368"; then
-        echo "✅ Port 2368 đang mở"
-    else
-        echo "❌ Port 2368 không mở"
-        echo "🔧 Khắc phục: cd ~/ghost && docker compose restart"
-        return 1
-    fi
-    
-    # Kiểm tra firewall
-    if sudo ufw status | grep -q "2368"; then
-        echo "✅ Firewall đã cho phép port 2368"
-    else
-        echo "⚠️ Firewall chưa mở port 2368"
-        echo "🔧 Khắc phục: sudo ufw allow 2368"
-        sudo ufw allow 2368
-    fi
-    
-    # Test kết nối
-    echo ""
-    echo "📡 Kiểm tra kết nối..."
-    if curl -s --connect-timeout 5 http://localhost:2368 >/dev/null; then
-        echo "✅ Ghost phản hồi tại localhost"
-        echo "🎉 THÀNH CÔNG! Truy cập: http://$DOMAIN:2368"
+    if [[ "$response" == "200" ]]; then
+        echo "✅ OK (HTTP $response)"
         return 0
+    elif [[ "$response" == "000" ]]; then
+        echo "❌ Không kết nối được"
+        return 1
     else
-        echo "❌ Ghost không phản hồi"
+        echo "⚠️ HTTP $response"
         return 1
     fi
 }
 
-# Chạy kiểm tra
-if check_ghost; then
-    echo ""
-    echo "=== HOÀN THÀNH THÀNH CÔNG ==="
-    echo "🎉 Ghost đã chạy tại: http://$DOMAIN:2368"
-    echo "⚙️ Admin: http://$DOMAIN:2368/ghost"
+# Function kiểm tra hệ thống
+check_system() {
+    echo "=== KIỂM TRA HỆ THỐNG ==="
+    local errors=0
+    
+    # Kiểm tra Docker
+    if sudo systemctl is-active --quiet docker; then
+        echo "✅ Docker service đang chạy"
+    else
+        echo "❌ Docker service không chạy"
+        ((errors++))
+    fi
+    
+    # Kiểm tra container
+    if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q ghost; then
+        echo "✅ Ghost container đang chạy"
+        docker ps --format "table {{.Names}}\t{{.Status}}" | grep ghost
+    else
+        echo "❌ Ghost container không chạy"
+        ((errors++))
+    fi
+    
+    # Kiểm tra port
+    if ss -tuln | grep -q ":2368"; then
+        echo "✅ Port 2368 đã bind"
+    else
+        echo "❌ Port 2368 chưa bind"
+        ((errors++))
+    fi
+    
+    return $errors
+}
+
+# Chờ Ghost khởi động
+echo "⏳ Chờ Ghost khởi động (30 giây)..."
+sleep 30
+
+# Kiểm tra hệ thống
+check_system
+SYSTEM_OK=$?
+
+echo ""
+echo "=== KIỂM TRA KẾT NỐI ==="
+
+# Test các URL
+test_url "$LOCAL_URL" "Local"
+LOCAL_OK=$?
+
+test_url "$PUBLIC_URL" "Public IP"
+PUBLIC_OK=$?
+
+# Nếu domain khác IP thì test domain
+if [[ "$DOMAIN" != "$PUBLIC_IP" ]]; then
+    test_url "$DOMAIN_URL" "Domain"
+    DOMAIN_OK=$?
 else
+    DOMAIN_OK=$PUBLIC_OK
+fi
+
+# Hiển thị kết quả
+echo ""
+if [[ $SYSTEM_OK -eq 0 && ($LOCAL_OK -eq 0 || $PUBLIC_OK -eq 0) ]]; then
+    echo "🎉 === THÀNH CÔNG! GHOST ĐÃ CHẠY === 🎉"
     echo ""
-    echo "=== CÓ LỖI XẢY RA ==="
-    echo "🔧 CÁCH KHẮC PHỤC:"
+    echo "📱 TRUY CẬP TRANG WEB:"
+    
+    if [[ $PUBLIC_OK -eq 0 ]]; then
+        echo "   🌐 Public: $PUBLIC_URL"
+        echo "   ⚙️ Admin:  $PUBLIC_URL/ghost"
+    fi
+    
+    if [[ $DOMAIN_OK -eq 0 && "$DOMAIN" != "$PUBLIC_IP" ]]; then
+        echo "   🏠 Domain: $DOMAIN_URL"
+        echo "   ⚙️ Admin:  $DOMAIN_URL/ghost"
+    fi
+    
     echo ""
-    echo "1. Khởi động lại Docker:"
-    echo "   sudo systemctl restart docker"
-    echo "   cd ~/ghost && docker compose down && docker compose up -d"
+    echo "✅ Tất cả hoạt động bình thường!"
+    echo "👆 Nhấp vào link bên trên để truy cập Ghost!"
+    
+else
+    echo "❌ === CÓ LỖI XẢY RA ==="
     echo ""
-    echo "2. Kiểm tra logs lỗi:"
-    echo "   cd ~/ghost && docker compose logs -f"
+    echo "📋 THÔNG TIN DEBUG:"
+    echo "   🖥️ IP VPS: $PUBLIC_IP"
+    echo "   🌐 Domain: $DOMAIN"
+    echo "   📊 System OK: $([ $SYSTEM_OK -eq 0 ] && echo 'YES' || echo 'NO')"
+    echo "   🏠 Local OK: $([ $LOCAL_OK -eq 0 ] && echo 'YES' || echo 'NO')"
+    echo "   🌍 Public OK: $([ $PUBLIC_OK -eq 0 ] && echo 'YES' || echo 'NO')"
     echo ""
-    echo "3. Khởi động lại VPS:"
+    echo "🔧 CÁCH KHẮC PHỤC TỰ ĐỘNG:"
+    echo ""
+    echo "1️⃣ Khởi động lại Ghost:"
+    echo "   cd ~/ghost && docker compose restart"
+    echo ""
+    echo "2️⃣ Mở firewall:"
+    echo "   sudo ufw allow 2368"
+    echo "   sudo ufw reload"
+    echo ""
+    echo "3️⃣ Xem logs lỗi:"
+    echo "   cd ~/ghost && docker compose logs --tail 50"
+    echo ""
+    echo "4️⃣ Khởi động lại VPS:"
     echo "   sudo reboot"
     echo ""
-    echo "4. Chạy Ghost manual:"
-    echo "   docker run -d --name ghost-manual -p 2368:2368 ghost:latest"
+    echo "5️⃣ Chạy Ghost đơn giản:"
+    echo "   docker run -d --name ghost-backup -p 2368:2368 ghost:latest"
     echo ""
-    echo "5. Kiểm tra IP công khai:"
-    echo "   curl ifconfig.me"
-    echo "   Thử truy cập: http://IP_CONG_KHAI:2368"
-    echo ""
-    echo "6. Tắt firewall tạm thời (test):"
-    echo "   sudo ufw disable"
-    echo ""
-    echo "7. Kiểm tra port từ bên ngoài:"
-    echo "   Vào https://www.yougetsignal.com/tools/open-ports/"
-    echo "   Nhập IP và port 2368"
+    echo "🌐 THỬ TRUY CẬP:"
+    echo "   Local:  $LOCAL_URL"
+    echo "   Public: $PUBLIC_URL"
+    echo "   Domain: $DOMAIN_URL"
 fi
 
 echo ""
-echo "📋 LỆNH HỮU ÍCH:"
-echo "- Xem logs: cd ~/ghost && docker compose logs -f"
-echo "- Dừng: cd ~/ghost && docker compose down"
-echo "- Khởi động: cd ~/ghost && docker compose up -d"
-echo "- Kiểm tra container: docker ps"
-echo "- Kiểm tra port: netstat -tuln | grep 2368"
-echo "- Xem IP công khai: curl ifconfig.me"
+echo "📋 === LỆNH HỮU ÍCH ==="
+echo "🔍 Kiểm tra:"
+echo "   docker ps                           # Xem containers"
+echo "   curl $PUBLIC_URL                    # Test từ terminal"
+echo "   ss -tuln | grep 2368                # Kiểm tra port"
 echo ""
-echo "📁 File config: ~/ghost/docker-compose.yml"
+echo "🔧 Quản lý:"
+echo "   cd ~/ghost && docker compose logs   # Xem logs"
+echo "   cd ~/ghost && docker compose down   # Dừng Ghost"
+echo "   cd ~/ghost && docker compose up -d  # Khởi động Ghost"
+echo "   docker compose pull && docker compose up -d  # Cập nhật"
+echo ""
+echo "📁 Files: ~/ghost/docker-compose.yml"
+echo "🆔 IP công khai: $PUBLIC_IP"
