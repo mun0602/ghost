@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Phục Truyền Thống Việt Nam - Nét Đẹp Văn Hóa</title> <!-- More descriptive title -->
+    <style>
+        :root { /* Define CSS variables for easier theme management */
+            --primary-color: #a0522d; /* Sienna */
+            --secondary-color: #8b4513; /* SaddleBrown */
+            --background-color: #fdfaf6; /* Lighter, warmer background */
+            --card-background: #ffffff;
+            --text-color: #333;
+            --border-color: #e0e0e0;
+            --shadow-color: rgba(0, 0, 0, 0.08);
+            --font-stack: 'Helvetica Neue', Helvetica, Arial, sans-serif; /* Modern font stack */
+        }
+
+        body {
+            font-family: var(--font-stack);
+            line-height: 1.7;
+            margin: 0; /* Remove default margin */
+            padding: 0; /* Remove default padding */
+            background-color: var(--background-color);
+            color: var(--text-color);
+            display: flex; /* Use flexbox for layout */
+            flex-direction: column; /* Stack header, main, footer vertically */
+            min-height: 100vh; /* Ensure body takes full viewport height */
+        }
+
+        .container { /* Wrapper for content */
+            max-width: 960px; /* Slightly wider */
+            margin: 0 auto; /* Center container */
+            padding: 20px;
+            width: 100%;
+            box-sizing: border-box; /* Include padding in width calculation */
+        }
+
+        header {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 15px 0;
+            text-align: center;
+            box-shadow: 0 2px 4px var(--shadow-color);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2em; /* Adjust size */
+            color: white; /* Override default h1 color */
+            border-bottom: none; /* Remove border from header h1 */
+            padding-bottom: 0;
+        }
+
+        main {
+            flex: 1; /* Allow main content to grow and fill space */
+            padding: 30px 0; /* Add vertical padding */
+        }
+
+        h2 {
+            color: var(--primary-color); /* Use primary color for section titles */
+            margin-top: 0; /* Remove default top margin */
+            margin-bottom: 20px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--primary-color); /* Solid border */
+            font-size: 1.6em;
+        }
+
+        article.costume { /* Use article tag */
+            margin-bottom: 40px;
+            border: 1px solid var(--border-color);
+            padding: 25px; /* Slightly more padding */
+            background-color: var(--card-background);
+            border-radius: 5px; /* Slightly less rounded */
+            box-shadow: 0 3px 6px var(--shadow-color); /* Refined shadow */
+            transition: box-shadow 0.3s ease; /* Add transition for hover */
+        }
+
+        article.costume:hover {
+             box-shadow: 0 5px 12px rgba(0, 0, 0, 0.12); /* Enhance shadow on hover */
+        }
+
+        p {
+            text-align: justify;
+            margin-bottom: 15px; /* Slightly more space */
+        }
+
+        img {
+            max-width: 50%; /* Adjust size */
+            height: auto;
+            display: block;
+            margin: 25px auto; /* Consistent margin */
+            border-radius: 5px;
+            box-shadow: 0 2px 5px var(--shadow-color);
+            border: 1px solid var(--border-color);
+        }
+
+        footer {
+            background-color: #f1f1f1;
+            color: #555;
+            text-align: center;
+            padding: 15px 0;
+            margin-top: 30px; /* Space above footer */
+            font-size: 0.9em;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Responsive adjustments (optional example) */
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8em; }
+            h2 { font-size: 1.4em; }
+            img { max-width: 70%; }
+            .container { padding: 15px; }
+            article.costume { padding: 20px; }
+        }
+         @media (max-width: 480px) {
+            h1 { font-size: 1.5em; }
+            h2 { font-size: 1.2em; }
+            img { max-width: 90%; }
+            body { line-height: 1.6; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+             <h1>Trang Phục Truyền Thống Việt Nam</h1>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <article class="costume"> <!-- Changed div to article -->
+            <h2>Áo Dài</h2>
+            <img src="images/ao_dai.jpg" alt="Hình ảnh Áo Dài Việt Nam">
+            <p>
+                Áo Dài là trang phục truyền thống nổi tiếng nhất của Việt Nam, thường được mặc trong các dịp lễ Tết, sự kiện quan trọng hoặc là đồng phục nữ sinh. Áo Dài tôn lên vẻ đẹp dịu dàng, thướt tha của người phụ nữ Việt Nam với thiết kế gồm hai tà áo dài che thân từ cổ đến hoặc quá đầu gối, mặc cùng với quần dài ống rộng.
+            </p>
+        </article> <!-- Changed div to article -->
+
+        <article class="costume"> <!-- Changed div to article -->
+            <h2>Áo Bà Ba</h2>
+            <img src="images/ao_ba_ba.jpg" alt="Hình ảnh Áo Bà Ba">
+            <p>
+                Áo Bà Ba là trang phục phổ biến ở miền Nam Việt Nam, đặc biệt là vùng nông thôn Đồng bằng sông Cửu Long. Đây là loại áo không cổ hoặc cổ tròn, thân áo phía sau may bằng một mảnh vải nguyên, thân trước gồm hai mảnh, ở giữa có hai dải khuy cài chạy dài từ trên xuống. Áo thường được mặc cùng quần đen dài hoặc quần lụa trắng, thể hiện sự mộc mạc, giản dị.
+            </p>
+        </article> <!-- Changed div to article -->
+
+        <article class="costume"> <!-- Changed div to article -->
+            <h2>Áo Tứ Thân</h2>
+            <img src="images/ao_tu_than.jpg" alt="Hình ảnh Áo Tứ Thân">
+            <p>
+                Áo Tứ Thân là trang phục cổ của phụ nữ miền Bắc Việt Nam. Áo gồm hai vạt trước và hai vạt sau, tượng trưng cho tứ thân phụ mẫu. Hai vạt trước được buộc lại với nhau, thả phía trước, kết hợp với yếm bên trong và váy đụp. Áo Tứ Thân thường gắn liền với hình ảnh các liền chị Quan họ Bắc Ninh duyên dáng.
+            </p>
+        </article> <!-- Changed div to article -->
+
+        <article class="costume"> <!-- Changed div to article -->
+            <h2>Áo Yếm</h2>
+            <img src="images/ao_yem.jpg" alt="Hình ảnh Áo Yếm">
+            <p>
+                Áo Yếm là trang phục nội y truyền thống của phụ nữ Việt Nam, thường được mặc bên trong Áo Tứ Thân hoặc các loại áo khác. Yếm có dạng hình thoi hoặc vuông, che phần ngực, có dây buộc ở cổ và sau lưng. Áo Yếm thể hiện nét duyên dáng, kín đáo nhưng cũng đầy gợi cảm của người phụ nữ xưa.
+            </p>
+        </article> <!-- Changed div to article -->
+
+        <article class="costume"> <!-- Changed div to article -->
+            <h2>Nón Quai Thao</h2>
+            <img src="images/non_quai_thao.jpg" alt="Hình ảnh Nón Quai Thao">
+            <p>
+                Tuy không phải là trang phục mặc trên người, Nón Quai Thao là một phụ kiện không thể thiếu, thường đi cùng với Áo Tứ Thân, đặc biệt trong các lễ hội ở miền Bắc. Nón có dạng hình tròn, rộng vành, phẳng, được làm từ lá cọ hoặc lá gồi, với quai nón bằng vải hoặc lụa, thường có màu sắc sặc sỡ, tô điểm thêm cho vẻ đẹp của người phụ nữ.
+            </p>
+        </article> <!-- Changed div to article -->
+
+        <!-- Add more sections for other traditional costumes if desired -->
+
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 Giới thiệu Trang phục Việt Nam. Bảo lưu mọi quyền.</p>
+            <!-- Add more footer content if needed -->
+        </div>
+    </footer>
+
+</body>
+</html>

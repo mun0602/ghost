@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pháp Luân Công | Chân - Thiện - Nhẫn</title>
+    <style>
+        :root {
+            --primary-color: #1a5276;
+            --accent-color: #f39c12;
+            --light-bg: #f8f9fa;
+            --dark-text: #333;
+            --light-text: #f8f9fa;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            line-height: 1.6;
+            color: var(--dark-text);
+            background-color: var(--light-bg);
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        /* Header styles */
+        header {
+            background-color: var(--primary-color);
+            color: var(--light-text);
+            padding: 1rem 0;
+            position: fixed;
+            width: 100%;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        
+        .logo span {
+            color: var(--accent-color);
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav ul li {
+            margin-left: 2rem;
+        }
+        
+        nav ul li a {
+            color: var(--light-text);
+            text-decoration: none;
+            transition: color 0.3s;
+            font-weight: 500;
+        }
+        
+        nav ul li a:hover {
+            color: var(--accent-color);
+        }
+        
+        /* Hero section */
+        .hero {
+            height: 100vh;
+            background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1519834774470-a27564c3c9cb');
+            background-size: cover;
+            background-position: center;
+            color: white;
+            display: flex;
+            align-items: center;
+            text-align: center;
+        }
+        
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            letter-spacing: 1px;
+        }
+        
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: var(--accent-color);
+            color: white;
+            padding: 0.8rem 1.8rem;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #e67e22;
+        }
+        
+        /* Sections */
+        section {
+            padding: 5rem 0;
+        }
+        
+        section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            color: var(--primary-color);
+        }
+        
+        .section-intro {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 3rem;
+        }
+        
+        /* Principles section */
+        .principles {
+            background-color: white;
+        }
+        
+        .principles-container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+        
+        .principle-card {
+            flex: 1;
+            min-width: 300px;
+            background-color: var(--light-bg);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .principle-card h3 {
+            color: var(--primary-color);
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .principle-icon {
+            font-size: 2.5rem;
+            color: var(--accent-color);
+            margin-bottom: 1.5rem;
+        }
+        
+        /* Practices section */
+        .practices {
+            background-color: var(--light-bg);
+        }
+        
+        .practice-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .practice-item {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .practice-item img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .practice-item h3 {
+            color: var(--primary-color);
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+        }
+        
+        /* Benefits section */
+        .benefits {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .benefits h2 {
+            color: white;
+        }
+        
+        .benefits-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .benefit-item {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        
+        .benefit-item i {
+            font-size: 2.5rem;
+            color: var(--accent-color);
+            margin-bottom: 1rem;
+        }
+        
+        /* Contact section */
+        .contact {
+            background-color: white;
+        }
+        
+        .contact-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+        
+        .contact-info {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .contact-info p {
+            margin-bottom: 1rem;
+        }
+        
+        .contact-info i {
+            color: var(--primary-color);
+            margin-right: 0.5rem;
+            width: 20px;
+        }
+        
+        .contact-form {
+            flex: 1;
+            min-width: 300px;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        
+        .form-group textarea {
+            height: 150px;
+        }
+        
+        /* Footer */
+        footer {
+            background-color: #222;
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        
+        .social-links {
+            margin: 1.5rem 0;
+        }
+        
+        .social-links a {
+            color: white;
+            margin: 0 10px;
+            font-size: 1.5rem;
+            transition: color 0.3s;
+        }
+        
+        .social-links a:hover {
+            color: var(--accent-color);
+        }
+        
+        @media screen and (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+            }
+            
+            nav ul {
+                margin-top: 1rem;
+            }
+            
+            nav ul li {
+                margin-left: 1rem;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            section {
+                padding: 3rem 0;
+            }
+        }
+    </style>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <!-- Header with Navigation -->
+    <header>
+        <div class="container header-content">
+            <div class="logo">Pháp Luân <span>Công</span></div>
+            <nav>
+                <ul>
+                    <li><a href="#about">Giới Thiệu</a></li>
+                    <li><a href="#principles">Nguyên Lý</a></li>
+                    <li><a href="#practices">Bài Công Pháp</a></li>
+                    <li><a href="#benefits">Lợi Ích</a></li>
+                    <li><a href="#contact">Liên Hệ</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container hero-content">
+            <h1>Pháp Luân Công</h1>
+            <p>Tu luyện theo nguyên lý Chân - Thiện - Nhẫn để nâng cao sức khỏe tinh thần và thể chất</p>
+            <a href="#about" class="btn">Tìm Hiểu Thêm</a>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="about">
+        <div class="container">
+            <h2>Giới Thiệu</h2>
+            <div class="section-intro">
+                <p>Pháp Luân Công, còn được gọi là Pháp Luân Đại Pháp, là phương pháp tu luyện cổ xưa của Trung Quốc. Phương pháp này bao gồm các bài tập nhẹ nhàng, thiền định và các nguyên lý đạo đức dựa trên nguyên lý cốt lõi: Chân - Thiện - Nhẫn.</p>
+            </div>
+            <div style="text-align: center;">
+                <img src="https://images.unsplash.com/photo-1516534775068-ba3e7458af70" alt="Người tập Pháp Luân Công" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+            </div>
+        </div>
+    </section>
+
+    <!-- Principles Section -->
+    <section id="principles" class="principles">
+        <div class="container">
+            <h2>Nguyên Lý Cốt Lõi</h2>
+            <div class="section-intro">
+                <p>Pháp Luân Công dạy người tu luyện đồng hóa với ba nguyên lý cơ bản của vũ trụ:</p>
+            </div>
+            <div class="principles-container">
+                <div class="principle-card">
+                    <div class="principle-icon"><i class="fas fa-heart"></i></div>
+                    <h3>CHÂN (Zhen)</h3>
+                    <p>Sự thật và tính chân thành trong mọi hành động, suy nghĩ và lời nói. Sống chân thực, thành thật với bản thân và người khác.</p>
+                </div>
+                <div class="principle-card">
+                    <div class="principle-icon"><i class="fas fa-hands-helping"></i></div>
+                    <h3>THIỆN (Shan)</h3>
+                    <p>Lòng tốt, lòng từ bi và sự tử tế với mọi người. Khả năng suy nghĩ cho người khác trước bản thân mình.</p>
+                </div>
+                <div class="principle-card">
+                    <div class="principle-icon"><i class="fas fa-peace"></i></div>
+                    <h3>NHẪN (Ren)</h3>
+                    <p>Sự kiên nhẫn và chịu đựng trước nghịch cảnh. Khả năng giữ bình tĩnh và không phản ứng tiêu cực trước các tình huống căng thẳng.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Practices Section -->
+    <section id="practices" class="practices">
+        <div class="container">
+            <h2>Bài Công Pháp</h2>
+            <div class="section-intro">
+                <p>Pháp Luân Công bao gồm năm bài công pháp nhẹ nhàng và hiệu quả, kết hợp các động tác và thiền định.</p>
+            </div>
+            <div class="practice-container">
+                <div class="practice-item">
+                    <img src="https://images.unsplash.com/photo-1547149600-a6eee6c79574" alt="Công Pháp 1">
+                    <h3>Công Pháp 1: Phật Triển Thiên Thủ Pháp</h3>
+                    <p>Một loạt các động tác kéo giãn nhẹ nhàng mở ra tất cả các kênh năng lượng trong cơ thể.</p>
+                </div>
+                <div class="practice-item">
+                    <img src="https://images.unsplash.com/photo-1590238604543-278e3fb81642" alt="Công Pháp 2">
+                    <h3>Công Pháp 2: Pháp Luân Trang Pháp</h3>
+                    <p>Bốn tư thế đứng tĩnh giúp tăng cường năng lượng và tăng sức mạnh tinh thần.</p>
+                </div>
+                <div class="practice-item">
+                    <img src="https://images.unsplash.com/photo-1507398941214-572c25f4b1dc" alt="Công Pháp 5">
+                    <h3>Công Pháp 5: Thần Thông Gia Trì Pháp</h3>
+                    <p>Thiền định ngồi để đạt được trạng thái tĩnh lặng và tăng cường năng lượng nội tại.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits Section -->
+    <section id="benefits" class="benefits">
+        <div class="container">
+            <h2>Lợi Ích</h2>
+            <div class="benefits-container">
+                <div class="benefit-item">
+                    <i class="fas fa-heartbeat"></i>
+                    <h3>Sức Khỏe Thể Chất</h3>
+                    <p>Cải thiện sức khỏe tổng thể và hỗ trợ hệ miễn dịch.</p>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-brain"></i>
+                    <h3>Sức Khỏe Tinh Thần</h3>
+                    <p>Giảm căng thẳng, lo âu và cải thiện sự tập trung.</p>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-balance-scale"></i>
+                    <h3>Cân Bằng Cuộc Sống</h3>
+                    <p>Phát triển sự hài hòa và bình an trong cuộc sống hàng ngày.</p>
+                </div>
+                <div class="benefit-item">
+                    <i class="fas fa-hand-holding-heart"></i>
+                    <h3>Phát Triển Đạo Đức</h3>
+                    <p>Tu dưỡng tính cách và nâng cao tiêu chuẩn đạo đức cá nhân.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section id="contact" class="contact">
+        <div class="container">
+            <h2>Liên Hệ</h2>
+            <div class="section-intro">
+                <p>Để biết thêm thông tin hoặc tham gia các điểm luyện công miễn phí.</p>
+            </div>
+            <div class="contact-container">
+                <div class="contact-info">
+                    <h3>Thông Tin Liên Hệ</h3>
+                    <p><i class="fas fa-map-marker-alt"></i> Các điểm luyện công tại công viên địa phương</p>
+                    <p><i class="fas fa-envelope"></i> info@phaluancong.vn</p>
+                    <p><i class="fas fa-phone"></i> (84) 123-456-789</p>
+                    <p><i class="fas fa-globe"></i> www.falundafa.org</p>
+                    <p>Tất cả các hoạt động đều miễn phí. Pháp Luân Công không thu phí cho bất kỳ hoạt động nào.</p>
+                </div>
+                <div class="contact-form">
+                    <h3>Gửi Thắc Mắc</h3>
+                    <form>
+                        <div class="form-group">
+                            <label for="name">Họ và Tên</label>
+                            <input type="text" id="name" name="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="message">Tin Nhắn</label>
+                            <textarea id="message" name="message" required></textarea>
+                        </div>
+                        <button type="submit" class="btn">Gửi Tin Nhắn</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>© 2023 Pháp Luân Công Việt Nam. Tất cả các quyền được bảo lưu.</p>
+            <div class="social-links">
+                <a href="#"><i class="fab fa-facebook"></i></a>
+                <a href="#"><i class="fab fa-youtube"></i></a>
+                <a href="#"><i class="fab fa-twitter"></i></a>
+                <a href="#"><i class="fab fa-instagram"></i></a>
+            </div>
+            <p><small>Pháp Luân Đại Pháp hay còn gọi là Pháp Luân Công, là phương pháp tu luyện cổ xưa để cải thiện thân tâm.</small></p>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const target = document.querySelector(this.getAttribute('href'));
+                const headerOffset = 70;
+                const elementPosition = target.getBoundingClientRect().top;
+                const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+                
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+</html>
