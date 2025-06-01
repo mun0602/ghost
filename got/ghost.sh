@@ -85,16 +85,107 @@ newgrp docker << END
 docker compose up -d
 END
 
-echo "=== HOÀN THÀNH ==="
-echo "🎉 Ghost đã chạy tại: http://$DOMAIN:2368"
-echo "⚙️ Admin: http://$DOMAIN:2368/ghost"
+# Kiểm tra và khắc phục
 echo ""
-echo "Lệnh hữu ích:"
+echo "6. Kiểm tra hệ thống..."
+sleep 10
+
+# Function kiểm tra
+check_ghost() {
+    echo "=== KIỂM TRA HỆ THỐNG ==="
+    
+    # Kiểm tra Docker đang chạy
+    if ! sudo systemctl is-active --quiet docker; then
+        echo "❌ Docker chưa chạy"
+        echo "🔧 Khắc phục: sudo systemctl start docker"
+        return 1
+    else
+        echo "✅ Docker đang chạy"
+    fi
+    
+    # Kiểm tra container Ghost
+    if docker ps | grep -q ghost; then
+        echo "✅ Ghost container đang chạy"
+    else
+        echo "❌ Ghost container không chạy"
+        echo "🔧 Xem lỗi: cd ~/ghost && docker compose logs"
+        return 1
+    fi
+    
+    # Kiểm tra port 2368
+    if netstat -tuln | grep -q ":2368"; then
+        echo "✅ Port 2368 đang mở"
+    else
+        echo "❌ Port 2368 không mở"
+        echo "🔧 Khắc phục: cd ~/ghost && docker compose restart"
+        return 1
+    fi
+    
+    # Kiểm tra firewall
+    if sudo ufw status | grep -q "2368"; then
+        echo "✅ Firewall đã cho phép port 2368"
+    else
+        echo "⚠️ Firewall chưa mở port 2368"
+        echo "🔧 Khắc phục: sudo ufw allow 2368"
+        sudo ufw allow 2368
+    fi
+    
+    # Test kết nối
+    echo ""
+    echo "📡 Kiểm tra kết nối..."
+    if curl -s --connect-timeout 5 http://localhost:2368 >/dev/null; then
+        echo "✅ Ghost phản hồi tại localhost"
+        echo "🎉 THÀNH CÔNG! Truy cập: http://$DOMAIN:2368"
+        return 0
+    else
+        echo "❌ Ghost không phản hồi"
+        return 1
+    fi
+}
+
+# Chạy kiểm tra
+if check_ghost; then
+    echo ""
+    echo "=== HOÀN THÀNH THÀNH CÔNG ==="
+    echo "🎉 Ghost đã chạy tại: http://$DOMAIN:2368"
+    echo "⚙️ Admin: http://$DOMAIN:2368/ghost"
+else
+    echo ""
+    echo "=== CÓ LỖI XẢY RA ==="
+    echo "🔧 CÁCH KHẮC PHỤC:"
+    echo ""
+    echo "1. Khởi động lại Docker:"
+    echo "   sudo systemctl restart docker"
+    echo "   cd ~/ghost && docker compose down && docker compose up -d"
+    echo ""
+    echo "2. Kiểm tra logs lỗi:"
+    echo "   cd ~/ghost && docker compose logs -f"
+    echo ""
+    echo "3. Khởi động lại VPS:"
+    echo "   sudo reboot"
+    echo ""
+    echo "4. Chạy Ghost manual:"
+    echo "   docker run -d --name ghost-manual -p 2368:2368 ghost:latest"
+    echo ""
+    echo "5. Kiểm tra IP công khai:"
+    echo "   curl ifconfig.me"
+    echo "   Thử truy cập: http://IP_CONG_KHAI:2368"
+    echo ""
+    echo "6. Tắt firewall tạm thời (test):"
+    echo "   sudo ufw disable"
+    echo ""
+    echo "7. Kiểm tra port từ bên ngoài:"
+    echo "   Vào https://www.yougetsignal.com/tools/open-ports/"
+    echo "   Nhập IP và port 2368"
+fi
+
+echo ""
+echo "📋 LỆNH HỮU ÍCH:"
 echo "- Xem logs: cd ~/ghost && docker compose logs -f"
 echo "- Dừng: cd ~/ghost && docker compose down"
 echo "- Khởi động: cd ~/ghost && docker compose up -d"
+echo "- Kiểm tra container: docker ps"
+echo "- Kiểm tra port: netstat -tuln | grep 2368"
+echo "- Xem IP công khai: curl ifconfig.me"
 echo ""
-echo "📁 File trong: ~/ghost/"
-echo ""
-echo "Nếu không truy cập được, thử:"
-echo "sudo reboot"
+echo "📁 File config: ~/ghost/docker-compose.yml"
