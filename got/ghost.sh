@@ -30,29 +30,169 @@ print_header() {
     echo "========================================"
     echo "    GHOST CÀI ĐẶT CHÍNH THỨC"
     echo "   Ubuntu + NGINX + MySQL + Node.js"
+    echo "     TỰ ĐỘNG TẠO USER & CÀI ĐẶT"
     echo "========================================"
     echo -e "${NC}"
 }
 
-# Kiểm tra quyền root
+# Hiển thị hướng dẫn sử dụng
+show_usage() {
+    echo "Cách sử dụng:"
+    echo ""
+    echo "🔧 CHẠY VỚI ROOT (khuyên dùng):"
+    echo "   sudo ./ghost-official-install.sh"
+    echo "   → Script sẽ tự tạo user mới và cài đặt"
+    echo ""
+    echo "👤 CHẠY VỚI USER THƯỜNG:"
+    echo "   ./ghost-official-install.sh"
+    echo "   → Kiểm tra user hiện tại và tiếp tục"
+    echo ""
+    echo "📋 YÊU CẦU:"
+    echo "   • Ubuntu 20.04/22.04/24.04"
+    echo "   • Kết nối internet"
+    echo "   • Domain đã trỏ về IP VPS"
+    echo "   • Port 80, 443, 2368 mở"
+    echo ""
+}
+
+# Kiểm tra quyền root và tạo user
 check_user() {
     if [[ $EUID -eq 0 ]]; then
-        print_error "Script này không nên chạy với quyền root!"
-        print_warning "Hãy tạo user mới hoặc chạy với user thường"
-        echo "Tạo user mới:"
-        echo "  sudo adduser yourname"
-        echo "  sudo usermod -aG sudo yourname"
-        echo "  su - yourname"
+        print_warning "Đang chạy với quyền root"
+        echo
+        echo "Tùy chọn:"
+        echo "1) Tạo user mới tự động"
+        echo "2) Sử dụng user hiện có"
+        echo "3) Hủy"
+        read -p "Chọn (1/2/3): " user_choice
+        
+        case $user_choice in
+            1) create_new_user ;;
+            2) switch_to_existing_user ;;
+            3) echo "❌ Hủy!"; exit 0 ;;
+            *) print_error "Lựa chọn không hợp lệ!"; exit 1 ;;
+        esac
+    else
+        # Kiểm tra user hiện tại
+        check_current_user
+    fi
+}
+
+# Tạo user mới
+create_new_user() {
+    print_status "Tạo user mới..."
+    
+    # Lấy tên user
+    read -p "Nhập tên user mới (ví dụ: myuser): " NEW_USER
+    
+    # Validate tên user
+    if [[ -z "$NEW_USER" || "$NEW_USER" == "ghost" || "$NEW_USER" == "root" ]]; then
+        print_error "Tên user không hợp lệ! Không được dùng 'ghost' hoặc 'root'"
+        exit 1
+    fi
+    
+    if id "$NEW_USER" &>/dev/null; then
+        print_warning "User $NEW_USER đã tồn tại"
+        read -p "Sử dụng user này? (y/n): " use_existing
+        if [[ ! $use_existing =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        # Tạo user mới
+        print_status "Tạo user: $NEW_USER"
+        adduser --gecos "" "$NEW_USER"
+        
+        if [[ $? -ne 0 ]]; then
+            print_error "Không thể tạo user!"
+            exit 1
+        fi
+    fi
+    
+    # Thêm vào sudo group
+    usermod -aG sudo "$NEW_USER"
+    
+    # Chuyển sang user mới và chạy lại script
+    print_status "Chuyển sang user: $NEW_USER"
+    
+    # Copy script đến home của user mới
+    local script_path="/home/$NEW_USER/ghost-install.sh"
+    cp "$0" "$script_path"
+    chown "$NEW_USER:$NEW_USER" "$script_path"
+    chmod +x "$script_path"
+    
+    print_status "Tiếp tục cài đặt với user: $NEW_USER"
+    su - "$NEW_USER" -c "$script_path --continue"
+    exit 0
+}
+
+# Chuyển sang user hiện có
+switch_to_existing_user() {
+    print_status "Chọn user hiện có..."
+    
+    # Hiển thị danh sách users
+    echo "Danh sách users có thể sử dụng:"
+    local users=($(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd))
+    
+    if [[ ${#users[@]} -eq 0 ]]; then
+        print_error "Không tìm thấy user phù hợp!"
+        create_new_user
+        return
+    fi
+    
+    local i=1
+    for user in "${users[@]}"; do
+        echo "$i) $user"
+        ((i++))
+    done
+    
+    read -p "Chọn user (1-${#users[@]}): " user_index
+    
+    if [[ $user_index -lt 1 || $user_index -gt ${#users[@]} ]]; then
+        print_error "Lựa chọn không hợp lệ!"
+        exit 1
+    fi
+    
+    local selected_user="${users[$((user_index-1))]}"
+    
+    # Đảm bảo user có sudo
+    usermod -aG sudo "$selected_user" 2>/dev/null || true
+    
+    # Copy script và chuyển user
+    local script_path="/home/$selected_user/ghost-install.sh"
+    cp "$0" "$script_path"
+    chown "$selected_user:$selected_user" "$script_path"
+    chmod +x "$script_path"
+    
+    print_status "Chuyển sang user: $selected_user"
+    su - "$selected_user" -c "$script_path --continue"
+    exit 0
+}
+
+# Kiểm tra user hiện tại
+check_current_user() {
+    if [[ "$USER" == "ghost" ]]; then
+        print_error "Không được dùng user tên 'ghost'!"
+        print_warning "Tạo user mới hoặc đổi tên user hiện tại"
         exit 1
     fi
     
     # Kiểm tra sudo
     if ! sudo -n true 2>/dev/null; then
-        print_warning "User hiện tại cần có quyền sudo"
-        echo "Thêm quyền sudo:"
-        echo "  sudo usermod -aG sudo $USER"
-        exit 1
+        print_warning "User hiện tại cần quyền sudo"
+        print_status "Thử thêm quyền sudo..."
+        
+        # Thử thêm sudo (cần nhập password)
+        echo "Nhập password để thêm quyền sudo:"
+        su -c "usermod -aG sudo $USER" root
+        
+        # Kiểm tra lại
+        if ! sudo -n true 2>/dev/null; then
+            print_error "Vẫn không có quyền sudo. Hãy logout/login lại hoặc chạy: newgrp sudo"
+            exit 1
+        fi
     fi
+    
+    print_status "User $USER đã sẵn sàng"
 }
 
 # Kiểm tra OS
@@ -84,6 +224,9 @@ gather_info() {
     
     print_status "Thu thập thông tin cài đặt..."
     
+    # Khai báo biến global
+    declare -g DOMAIN SITENAME MYSQL_ROOT_PASSWORD USE_SSL SSL_EMAIL BLOG_URL pass_choice
+    
     # Domain
     echo -e "${YELLOW}1. Cấu hình Domain:${NC}"
     read -p "Nhập domain của bạn (ví dụ: myblog.com): " DOMAIN
@@ -103,8 +246,19 @@ gather_info() {
     
     # MySQL password
     echo -e "\n${YELLOW}3. Mật khẩu MySQL:${NC}"
-    read -s -p "Nhập mật khẩu MySQL root: " MYSQL_ROOT_PASSWORD
-    echo
+    echo "1) Tự động tạo mật khẩu"
+    echo "2) Nhập mật khẩu thủ công"
+    read -p "Chọn (1/2): " pass_choice
+    
+    if [[ "$pass_choice" == "1" ]]; then
+        MYSQL_ROOT_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-12)
+        echo "✅ Mật khẩu tự động: $MYSQL_ROOT_PASSWORD"
+        echo "📝 (Ghi nhớ mật khẩu này!)"
+        read -p "Nhấn Enter để tiếp tục..." -t 10
+    else
+        read -s -p "Nhập mật khẩu MySQL root: " MYSQL_ROOT_PASSWORD
+        echo
+    fi
     
     if [[ ${#MYSQL_ROOT_PASSWORD} -lt 6 ]]; then
         print_error "Mật khẩu MySQL phải ít nhất 6 ký tự!"
@@ -128,10 +282,22 @@ gather_info() {
     echo "Blog URL: $BLOG_URL"
     echo "Site name: $SITENAME"
     echo "Thư mục: /var/www/$SITENAME"
-    echo "MySQL root password: [đã đặt]"
+    if [[ "$pass_choice" == "1" ]]; then
+        echo "MySQL root password: $MYSQL_ROOT_PASSWORD (tự động tạo)"
+    else
+        echo "MySQL root password: [đã đặt thủ công]"
+    fi
     echo "SSL: $([ $USE_SSL = 'y' ] && echo 'Có' || echo 'Không')"
-    echo
-    read -p "Thông tin có đúng không? (y/n): " confirm
+    echo "User hiện tại: $USER"
+    echo ""
+    echo "⚠️  Script sẽ cài đặt:"
+    echo "   • NGINX (web server)"
+    echo "   • MySQL 8 (database)"  
+    echo "   • Node.js 18 (runtime)"
+    echo "   • Ghost-CLI (quản lý)"
+    echo "   • Ghost CMS (production)"
+    echo ""
+    read -p "Bắt đầu cài đặt? (y/n): " confirm
     if [[ ! $confirm =~ ^[Yy]$ ]]; then
         print_error "Hủy cài đặt!"
         exit 1
@@ -401,6 +567,7 @@ show_completion() {
     echo "🔒 SSL: $([ $USE_SSL = 'y' ] && echo 'Đã kích hoạt' || echo 'Chưa kích hoạt')"
     echo "🌐 Web server: NGINX"
     echo "⚙️  Process: systemd"
+    echo "🔑 MySQL root password: [đã lưu trong config]"
     echo
     echo -e "${YELLOW}Lệnh quản lý Ghost:${NC}"
     echo "• Xem status: cd /var/www/$SITENAME && ghost status"
@@ -420,26 +587,65 @@ show_completion() {
 
 # Main function
 main() {
-    print_header
-    print_status "Bắt đầu cài đặt Ghost theo hướng dẫn chính thức..."
-    
-    check_user
-    check_os
-    gather_info
-    check_existing
-    update_system
-    install_nginx
-    install_mysql
-    install_nodejs
-    install_ghost_cli
-    install_ghost
-    
-    if verify_installation; then
-        show_completion
-    else
-        print_error "Cài đặt có lỗi. Kiểm tra logs:"
-        echo "cd /var/www/$SITENAME && ghost log"
-    fi
+    # Kiểm tra tham số
+    case "$1" in
+        --help|-h)
+            print_header
+            show_usage
+            exit 0
+            ;;
+        --continue)
+            print_header
+            print_status "Tiếp tục cài đặt Ghost với user: $USER"
+            
+            # Bỏ qua bước tạo user, chuyển thẳng đến gather_info
+            check_current_user
+            check_os
+            gather_info
+            check_existing
+            update_system
+            install_nginx
+            install_mysql
+            install_nodejs
+            install_ghost_cli
+            install_ghost
+            
+            if verify_installation; then
+                show_completion
+            else
+                print_error "Cài đặt có lỗi. Kiểm tra logs:"
+                echo "cd /var/www/$SITENAME && ghost log"
+            fi
+            ;;
+        "")
+            # Chạy bình thường
+            print_header
+            print_status "Bắt đầu cài đặt Ghost theo hướng dẫn chính thức..."
+            
+            check_user
+            check_os
+            gather_info
+            check_existing
+            update_system
+            install_nginx
+            install_mysql
+            install_nodejs
+            install_ghost_cli
+            install_ghost
+            
+            if verify_installation; then
+                show_completion
+            else
+                print_error "Cài đặt có lỗi. Kiểm tra logs:"
+                echo "cd /var/www/$SITENAME && ghost log"
+            fi
+            ;;
+        *)
+            print_error "Tham số không hợp lệ: $1"
+            echo "Sử dụng: $0 [--help|--continue]"
+            exit 1
+            ;;
+    esac
 }
 
 # Chạy script
