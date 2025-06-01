@@ -1,559 +1,446 @@
 #!/bin/bash
 
-# Script cài Ghost đơn giản
-echo "=== GHOST CÀI ĐẶT ĐƠN GIẢN ==="
+# Script cài đặt Ghost theo hướng dẫn chính thức ghost.org
+# Ubuntu 20.04/22.04 + NGINX + MySQL + Node.js + Ghost-CLI
+# Phiên bản: 1.0
 
-# Cập nhật package list
-echo "1. Cập nhật package list..."
-sudo apt update
-sudo apt install -y curl wget net-tools iproute2
+set -e
+
+# Màu sắc
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${BLUE}"
+    echo "========================================"
+    echo "    GHOST CÀI ĐẶT CHÍNH THỨC"
+    echo "   Ubuntu + NGINX + MySQL + Node.js"
+    echo "========================================"
+    echo -e "${NC}"
+}
+
+# Kiểm tra quyền root
+check_user() {
+    if [[ $EUID -eq 0 ]]; then
+        print_error "Script này không nên chạy với quyền root!"
+        print_warning "Hãy tạo user mới hoặc chạy với user thường"
+        echo "Tạo user mới:"
+        echo "  sudo adduser yourname"
+        echo "  sudo usermod -aG sudo yourname"
+        echo "  su - yourname"
+        exit 1
+    fi
+    
+    # Kiểm tra sudo
+    if ! sudo -n true 2>/dev/null; then
+        print_warning "User hiện tại cần có quyền sudo"
+        echo "Thêm quyền sudo:"
+        echo "  sudo usermod -aG sudo $USER"
+        exit 1
+    fi
+}
+
+# Kiểm tra OS
+check_os() {
+    if [[ ! -f /etc/os-release ]]; then
+        print_error "Không thể xác định OS"
+        exit 1
+    fi
+    
+    source /etc/os-release
+    if [[ "$ID" != "ubuntu" ]]; then
+        print_error "Script này chỉ hỗ trợ Ubuntu"
+        exit 1
+    fi
+    
+    local version=$(echo $VERSION_ID | cut -d. -f1)
+    if [[ "$version" != "20" && "$version" != "22" && "$version" != "24" ]]; then
+        print_warning "Ghost chính thức hỗ trợ Ubuntu 20.04/22.04. Phiên bản hiện tại: $VERSION_ID"
+        read -p "Tiếp tục? (y/n): " continue_choice
+        if [[ ! $continue_choice =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+}
+
+# Thu thập thông tin
+gather_info() {
+    print_header
+    
+    print_status "Thu thập thông tin cài đặt..."
+    
+    # Domain
+    echo -e "${YELLOW}1. Cấu hình Domain:${NC}"
+    read -p "Nhập domain của bạn (ví dụ: myblog.com): " DOMAIN
+    
+    if [[ ! $DOMAIN =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$ ]]; then
+        print_warning "Domain không hợp lệ, nhưng sẽ tiếp tục..."
+    fi
+    
+    # Site name
+    echo -e "\n${YELLOW}2. Tên trang web:${NC}"
+    read -p "Nhập tên thư mục (ví dụ: myblog): " SITENAME
+    SITENAME=${SITENAME//[^a-zA-Z0-9]/}  # Loại bỏ ký tự đặc biệt
+    
+    if [[ -z "$SITENAME" ]]; then
+        SITENAME="ghostsite"
+    fi
+    
+    # MySQL password
+    echo -e "\n${YELLOW}3. Mật khẩu MySQL:${NC}"
+    read -s -p "Nhập mật khẩu MySQL root: " MYSQL_ROOT_PASSWORD
+    echo
+    
+    if [[ ${#MYSQL_ROOT_PASSWORD} -lt 6 ]]; then
+        print_error "Mật khẩu MySQL phải ít nhất 6 ký tự!"
+        exit 1
+    fi
+    
+    # SSL
+    echo -e "\n${YELLOW}4. SSL Certificate:${NC}"
+    read -p "Cài đặt SSL (Let's Encrypt)? (y/n): " USE_SSL
+    
+    if [[ $USE_SSL =~ ^[Yy]$ ]]; then
+        read -p "Nhập email cho SSL: " SSL_EMAIL
+        BLOG_URL="https://$DOMAIN"
+    else
+        BLOG_URL="http://$DOMAIN"
+    fi
+    
+    # Xác nhận
+    echo -e "\n${BLUE}=== XÁC NHẬN THÔNG TIN ===${NC}"
+    echo "Domain: $DOMAIN"
+    echo "Blog URL: $BLOG_URL"
+    echo "Site name: $SITENAME"
+    echo "Thư mục: /var/www/$SITENAME"
+    echo "MySQL root password: [đã đặt]"
+    echo "SSL: $([ $USE_SSL = 'y' ] && echo 'Có' || echo 'Không')"
+    echo
+    read -p "Thông tin có đúng không? (y/n): " confirm
+    if [[ ! $confirm =~ ^[Yy]$ ]]; then
+        print_error "Hủy cài đặt!"
+        exit 1
+    fi
+}
 
 # Kiểm tra cài đặt cũ
-# Hiển thị thông tin cài đặt hiện tại
-show_current_info() {
-    echo ""
-    echo "=== THÔNG TIN CÀI ĐẶT HIỆN TẠI ==="
+check_existing() {
+    print_status "Kiểm tra cài đặt cũ..."
     
-    # Thông tin containers
-    if docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" | grep -E "ghost|db"; then
-        echo "🐳 Docker Containers:"
-        docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" | grep -E "ghost|db"
+    local has_existing=false
+    
+    # Kiểm tra Ghost-CLI
+    if command -v ghost >/dev/null 2>&1; then
+        echo "⚠️  Tìm thấy Ghost-CLI"
+        has_existing=true
     fi
     
-    # Thông tin volumes
-    if docker volume ls | grep -E "ghost|db"; then
+    # Kiểm tra thư mục
+    if [[ -d "/var/www/$SITENAME" ]]; then
+        echo "⚠️  Thư mục /var/www/$SITENAME đã tồn tại"
+        has_existing=true
+    fi
+    
+    # Kiểm tra NGINX
+    if systemctl is-active --quiet nginx 2>/dev/null; then
+        echo "⚠️  NGINX đang chạy"
+        has_existing=true
+    fi
+    
+    # Kiểm tra MySQL
+    if systemctl is-active --quiet mysql 2>/dev/null; then
+        echo "⚠️  MySQL đang chạy"
+        has_existing=true
+    fi
+    
+    if [[ "$has_existing" = true ]]; then
         echo ""
-        echo "💾 Docker Volumes:"
-        docker volume ls | grep -E "ghost|db"
-    fi
-    
-    # Thông tin cấu hình
-    if [ -f "$HOME/ghost/docker-compose.yml" ]; then
-        echo ""
-        echo "📄 Config hiện tại (~/ghost/docker-compose.yml):"
-        echo "----------------------------------------"
-        cat "$HOME/ghost/docker-compose.yml"
-        echo "----------------------------------------"
-    fi
-    
-    # Thông tin URL
-    echo ""
-    echo "🌐 Kiểm tra kết nối:"
-    local ports=("2368" "8080")
-    for port in "${ports[@]}"; do
-        if ss -tuln | grep -q ":$port"; then
-            echo "   Port $port: ✅ Đang mở"
-            local public_ip=$(curl -s --connect-timeout 5 ifconfig.me || echo "UNKNOWN")
-            echo "   URL có thể: http://$public_ip:$port"
-        fi
-    done
-    
-    echo ""
-    echo "📁 Thư mục: $([ -d "$HOME/ghost" ] && echo "✅ ~/ghost/ tồn tại" || echo "❌ ~/ghost/ không tồn tại")"
-    
-    echo ""
-    echo "Press Enter để tiếp tục..."
-    read
-}
-
-# Restore từ backup
-restore_from_backup() {
-    echo ""
-    echo "=== RESTORE TỪ BACKUP ==="
-    echo "📁 Các backup có sẵn:"
-    
-    local backup_dirs=($(ls -d $HOME/ghost-backup-* 2>/dev/null || true))
-    
-    if [ ${#backup_dirs[@]} -eq 0 ]; then
-        echo "❌ Không tìm thấy backup nào!"
-        return 1
-    fi
-    
-    local i=1
-    for dir in "${backup_dirs[@]}"; do
-        echo "$i) $(basename $dir)"
-        ((i++))
-    done
-    
-    echo "0) Hủy"
-    echo ""
-    read -p "Chọn backup để restore: " choice
-    
-    if [[ "$choice" == "0" ]]; then
-        return 0
-    fi
-    
-    local selected_backup="${backup_dirs[$((choice-1))]}"
-    
-    if [ -z "$selected_backup" ]; then
-        echo "❌ Lựa chọn không hợp lệ!"
-        return 1
-    fi
-    
-    echo "🔄 Restore từ: $(basename $selected_backup)"
-    
-    # Restore config
-    if [ -d "$selected_backup" ]; then
-        cp -r "$selected_backup"/* "$HOME/ghost/" 2>/dev/null || true
-        echo "✅ Restore config"
-    fi
-    
-    # Restore content volume
-    if [ -f "$selected_backup/ghost_content.tar.gz" ]; then
-        docker volume create ghost_content
-        docker run --rm -v ghost_content:/data -v "$selected_backup":/backup alpine tar xzf /backup/ghost_content.tar.gz -C /data
-        echo "✅ Restore content volume"
-    fi
-    
-    echo "✅ Restore hoàn tất!"
-}
-
-check_existing_installation() {
-    echo ""
-    echo "=== KIỂM TRA CÀI ĐẶT CŨ ==="
-    
-    local has_old_install=false
-    
-    # Kiểm tra thư mục ~/ghost
-    if [ -d "$HOME/ghost" ]; then
-        echo "📁 Tìm thấy thư mục: ~/ghost/"
-        has_old_install=true
-    fi
-    
-    # Kiểm tra containers Ghost đang chạy
-    if docker ps -a --format "table {{.Names}}" 2>/dev/null | grep -q ghost; then
-        echo "🐳 Tìm thấy Ghost containers:"
-        docker ps -a --format "table {{.Names}}\t{{.Status}}" | grep ghost
-        has_old_install=true
-    fi
-    
-    # Kiểm tra volumes
-    if docker volume ls --format "table {{.Name}}" 2>/dev/null | grep -q ghost; then
-        echo "💾 Tìm thấy Ghost volumes:"
-        docker volume ls --format "table {{.Name}}" | grep ghost
-        has_old_install=true
-    fi
-    
-    # Kiểm tra port đang được sử dụng
-    if ss -tuln | grep -q ":2368\|:8080"; then
-        echo "🔌 Port 2368/8080 đang được sử dụng:"
-        ss -tuln | grep ":2368\|:8080"
-        has_old_install=true
-    fi
-    
-    if [ "$has_old_install" = true ]; then
-        echo ""
-        echo "⚠️  PHÁT HIỆN CÀI ĐẶT CŨ!"
-        echo ""
-        echo "Tùy chọn:"
+        print_warning "Phát hiện cài đặt cũ!"
         echo "1) Tiếp tục (có thể gây conflict)"
-        echo "2) Cài đè (xóa tất cả và cài mới)"
-        echo "3) Backup + Cài đè"
-        echo "4) Xem thông tin cài đặt hiện tại"
-        echo "5) Hủy"
-        echo ""
-        read -p "Chọn (1/2/3/4/5): " choice
+        echo "2) Dọn dẹp và cài mới"
+        echo "3) Hủy"
+        read -p "Chọn (1/2/3): " choice
         
         case $choice in
-            1)
-                echo "⏩ Tiếp tục với cài đặt cũ..."
-                ;;
-            2)
-                cleanup_old_installation false
-                ;;
-            3)
-                cleanup_old_installation true
-                ;;
-            4)
-                show_current_info
-                check_existing_installation  # Hỏi lại
-                ;;
-            5)
-                echo "❌ Hủy cài đặt!"
-                exit 0
-                ;;
-            *)
-                echo "❌ Lựa chọn không hợp lệ!"
-                exit 1
-                ;;
+            1) echo "⏩ Tiếp tục..." ;;
+            2) cleanup_existing ;;
+            3) echo "❌ Hủy!"; exit 0 ;;
+            *) print_error "Lựa chọn không hợp lệ!"; exit 1 ;;
         esac
-    else
-        echo "✅ Không tìm thấy cài đặt cũ"
     fi
 }
 
 # Dọn dẹp cài đặt cũ
-cleanup_old_installation() {
-    local do_backup=$1
+cleanup_existing() {
+    print_status "Dọn dẹp cài đặt cũ..."
     
-    echo ""
-    echo "🧹 DỌNG DẸP CÀI ĐẶT CŨ..."
-    
-    # Backup nếu được yêu cầu
-    if [ "$do_backup" = true ]; then
-        echo "💾 Tạo backup..."
-        local backup_dir="$HOME/ghost-backup-$(date +%Y%m%d_%H%M%S)"
-        
-        if [ -d "$HOME/ghost" ]; then
-            cp -r "$HOME/ghost" "$backup_dir"
-            echo "✅ Backup config: $backup_dir"
-        fi
-        
-        # Backup volumes
-        if docker volume ls | grep -q ghost_content; then
-            docker run --rm -v ghost_content:/data -v "$backup_dir":/backup alpine tar czf /backup/ghost_content.tar.gz -C /data .
-            echo "✅ Backup content: $backup_dir/ghost_content.tar.gz"
-        fi
+    # Dừng Ghost nếu đang chạy
+    if [[ -d "/var/www/$SITENAME" ]]; then
+        cd "/var/www/$SITENAME"
+        sudo -u $USER ghost stop 2>/dev/null || true
+        sudo -u $USER ghost uninstall --force 2>/dev/null || true
     fi
-    
-    # Dừng và xóa containers
-    echo "🛑 Dừng Ghost containers..."
-    docker ps -q --filter "name=ghost" | xargs -r docker stop
-    docker ps -aq --filter "name=ghost" | xargs -r docker rm
-    
-    # Xóa containers với tên chứa ghost hoặc db
-    docker ps -aq --filter "name=db" | xargs -r docker rm -f
-    
-    # Xóa volumes
-    echo "🗑️  Xóa Ghost volumes..."
-    docker volume ls -q | grep ghost | xargs -r docker volume rm
-    docker volume ls -q | grep -E "ghost_|db" | xargs -r docker volume rm
     
     # Xóa thư mục
-    if [ -d "$HOME/ghost" ]; then
-        echo "📁 Xóa thư mục ~/ghost..."
-        rm -rf "$HOME/ghost"
+    if [[ -d "/var/www/$SITENAME" ]]; then
+        sudo rm -rf "/var/www/$SITENAME"
+        echo "✅ Đã xóa /var/www/$SITENAME"
     fi
     
-    # Dọn dẹp images không sử dụng
-    echo "🧽 Dọn dẹp Docker images..."
-    docker image prune -f
-    
-    echo "✅ Dọn dẹp hoàn tất!"
-    
-    if [ "$do_backup" = true ]; then
-        echo "📁 Backup được lưu tại: $backup_dir"
-    fi
+    # Gỡ Ghost-CLI
+    sudo npm uninstall -g ghost-cli 2>/dev/null || true
+    echo "✅ Đã gỡ Ghost-CLI"
 }
 
-check_existing_installation
+# Cập nhật hệ thống
+update_system() {
+    print_status "Cập nhật hệ thống..."
+    sudo apt-get update
+    sudo apt-get upgrade -y
+    sudo apt-get install -y curl wget gnupg2 software-properties-common
+}
 
-# Cài Docker nhanh
-echo "2. Cài Docker..."
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Hỏi thông tin cơ bản
-echo "3. Nhập thông tin:"
-read -p "Nhập domain hoặc IP của bạn: " DOMAIN
-read -p "Chọn port (2368/8080, mặc định 8080): " PORT
-PORT=${PORT:-8080}
-read -p "Dùng MySQL? (y/n, mặc định SQLite): " USE_MYSQL
-
-# Tạo thư mục
-mkdir -p ~/ghost
-cd ~/ghost
-
-# Tạo docker-compose đơn giản
-if [[ $USE_MYSQL == "y" ]]; then
-    echo "Tạo Ghost với MySQL..."
-    read -p "Nhập mật khẩu MySQL: " MYSQL_PASS
+# Cài đặt NGINX
+install_nginx() {
+    print_status "Cài đặt NGINX..."
+    sudo apt-get install -y nginx
     
-    cat > docker-compose.yml << EOF
-services:
-  ghost:
-    image: ghost:latest
-    restart: always
-    ports:
-      - "2368:2368"
-    environment:
-      url: http://$DOMAIN:2368
-      database__client: mysql
-      database__connection__host: db
-      database__connection__user: ghost
-      database__connection__password: $MYSQL_PASS
-      database__connection__database: ghostdb
-    volumes:
-      - ./content:/var/lib/ghost/content
-    depends_on:
-      - db
+    # Kiểm tra version
+    local nginx_version=$(nginx -v 2>&1 | grep -o '[0-9.]*')
+    echo "✅ NGINX $nginx_version đã cài đặt"
+    
+    # Khởi động và enable
+    sudo systemctl start nginx
+    sudo systemctl enable nginx
+    
+    # Cấu hình firewall
+    sudo ufw allow 'Nginx Full' 2>/dev/null || true
+    echo "✅ NGINX đã được cấu hình"
+}
 
-  db:
-    image: mysql:8.0
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: $MYSQL_PASS
-      MYSQL_DATABASE: ghostdb
-      MYSQL_USER: ghost
-      MYSQL_PASSWORD: $MYSQL_PASS
-    volumes:
-      - ./mysql:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      timeout: 20s
-      retries: 10
+# Cài đặt MySQL
+install_mysql() {
+    print_status "Cài đặt MySQL..."
+    
+    # Set root password trước khi cài
+    echo "mysql-server mysql-server/root_password password $MYSQL_ROOT_PASSWORD" | sudo debconf-set-selections
+    echo "mysql-server mysql-server/root_password_again password $MYSQL_ROOT_PASSWORD" | sudo debconf-set-selections
+    
+    sudo apt-get install -y mysql-server
+    
+    # Khởi động MySQL
+    sudo systemctl start mysql
+    sudo systemctl enable mysql
+    
+    # Cấu hình MySQL cho Ghost
+    print_status "Cấu hình MySQL..."
+    
+    # Tạo script SQL
+    cat > /tmp/mysql_setup.sql << EOF
+ALTER USER 'root'@'localhost' IDENTIFIED WITH 'mysql_native_password' BY '$MYSQL_ROOT_PASSWORD';
+FLUSH PRIVILEGES;
 EOF
-else
-    echo "Tạo Ghost với SQLite..."
-    cat > docker-compose.yml << EOF
-version: '3.8'
-services:
-  ghost:
-    image: ghost:latest
-    restart: always
-    ports:
-      - "2368:2368"
-    environment:
-      url: http://$DOMAIN:2368
-    volumes:
-      - ./content:/var/lib/ghost/content
+    
+    # Chạy script
+    mysql -u root -p"$MYSQL_ROOT_PASSWORD" < /tmp/mysql_setup.sql 2>/dev/null || {
+        # Nếu lỗi, thử không có password
+        sudo mysql < /tmp/mysql_setup.sql
+    }
+    
+    rm /tmp/mysql_setup.sql
+    echo "✅ MySQL đã được cấu hình"
+}
+
+# Cài đặt Node.js
+install_nodejs() {
+    print_status "Cài đặt Node.js..."
+    
+    # Thêm NodeSource repository
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    
+    # Sử dụng Node.js 18 (LTS được Ghost hỗ trợ)
+    NODE_MAJOR=18
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+    
+    sudo apt-get update
+    sudo apt-get install -y nodejs
+    
+    # Kiểm tra version
+    local node_version=$(node --version)
+    local npm_version=$(npm --version)
+    echo "✅ Node.js $node_version, npm $npm_version đã cài đặt"
+}
+
+# Cài đặt Ghost-CLI
+install_ghost_cli() {
+    print_status "Cài đặt Ghost-CLI..."
+    sudo npm install ghost-cli@latest -g
+    
+    # Kiểm tra
+    local ghost_cli_version=$(ghost --version)
+    echo "✅ Ghost-CLI $ghost_cli_version đã cài đặt"
+}
+
+# Tạo thư mục và cài Ghost
+install_ghost() {
+    print_status "Tạo thư mục và cài đặt Ghost..."
+    
+    # Tạo thư mục
+    sudo mkdir -p "/var/www/$SITENAME"
+    sudo chown $USER:$USER "/var/www/$SITENAME"
+    sudo chmod 775 "/var/www/$SITENAME"
+    
+    cd "/var/www/$SITENAME"
+    
+    # Cài Ghost với auto-config
+    print_status "Chạy Ghost install..."
+    print_warning "Quá trình này có thể mất 5-10 phút..."
+    
+    # Tạo file config tự động
+    cat > .ghost-cli << EOF
+{
+  "instances": {
+    "default": {
+      "url": "$BLOG_URL",
+      "adminUrl": "$BLOG_URL",
+      "database": {
+        "client": "mysql",
+        "connection": {
+          "host": "localhost",
+          "user": "root",
+          "password": "$MYSQL_ROOT_PASSWORD",
+          "database": "ghost_prod"
+        }
+      },
+      "server": {
+        "port": 2368,
+        "host": "127.0.0.1"
+      },
+      "process": "systemd",
+      "paths": {
+        "contentPath": "content"
+      }
+    }
+  }
+}
 EOF
-fi
-
-# Mở cổng firewall
-echo "4. Mở cổng $PORT..."
-sudo ufw allow $PORT
-
-# Khởi động Ghost
-echo "5. Khởi động Ghost..."
-if [[ $USE_MYSQL == "y" ]]; then
-    echo "🗄️ Khởi động MySQL trước..."
-    newgrp docker << END
-docker compose up -d db
-END
-    echo "⏳ Chờ MySQL sẵn sàng (60 giây)..."
-    sleep 60
     
-    echo "👻 Khởi động Ghost..."
-    newgrp docker << END
-docker compose up -d ghost
-END
-else
-    newgrp docker << END
-docker compose up -d
-END
-fi
-
-# Kiểm tra và tối ưu
-echo ""
-echo "6. Kiểm tra và tối ưu hệ thống..."
-
-# Lấy IP công khai
-echo "📡 Lấy IP công khai..."
-PUBLIC_IP=$(curl -s --connect-timeout 10 ifconfig.me || curl -s --connect-timeout 10 ipinfo.io/ip || echo "UNKNOWN")
-
-# URLs để test
-LOCAL_URL="http://localhost:$PORT"
-PUBLIC_URL="http://$PUBLIC_IP:$PORT"
-DOMAIN_URL="http://$DOMAIN:$PORT"
-
-# Function kiểm tra URL
-test_url() {
-    local url=$1
-    local name=$2
-    
-    echo -n "🔍 Kiểm tra $name ($url)... "
-    
-    # Test HTTP response
-    local response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$url" 2>/dev/null)
-    
-    if [[ "$response" == "200" ]]; then
-        echo "✅ OK (HTTP $response)"
-        return 0
-    elif [[ "$response" == "000" ]]; then
-        echo "❌ Không kết nối được"
-        return 1
-    else
-        echo "⚠️ HTTP $response"
-        return 1
-    fi
+    # Chạy ghost install với các flags
+    ghost install \
+        --url "$BLOG_URL" \
+        --db mysql \
+        --dbhost localhost \
+        --dbuser root \
+        --dbpass "$MYSQL_ROOT_PASSWORD" \
+        --dbname "ghost_prod" \
+        --process systemd \
+        --nginx \
+        $([ "$USE_SSL" = "y" ] && echo "--ssl --sslemail $SSL_EMAIL" || echo "--no-ssl") \
+        --no-prompt
 }
 
-# Function kiểm tra hệ thống
-check_system() {
-    echo "=== KIỂM TRA HỆ THỐNG ==="
-    local errors=0
+# Kiểm tra cài đặt
+verify_installation() {
+    print_status "Kiểm tra cài đặt..."
     
-    # Kiểm tra Docker
-    if sudo systemctl is-active --quiet docker; then
-        echo "✅ Docker service đang chạy"
+    cd "/var/www/$SITENAME"
+    
+    # Kiểm tra Ghost service
+    if ghost status | grep -q "running"; then
+        echo "✅ Ghost service đang chạy"
     else
-        echo "❌ Docker service không chạy"
-        ((errors++))
+        echo "❌ Ghost service không chạy"
+        return 1
     fi
     
-    # Kiểm tra container
-    if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q ghost; then
-        echo "✅ Ghost container đang chạy"
-        docker ps --format "table {{.Names}}\t{{.Status}}" | grep ghost
+    # Kiểm tra URL
+    sleep 5
+    if curl -s --connect-timeout 10 "$BLOG_URL" >/dev/null; then
+        echo "✅ Website phản hồi tại $BLOG_URL"
     else
-        echo "❌ Ghost container không chạy"
-        ((errors++))
+        echo "⚠️  Website chưa phản hồi (có thể cần thời gian)"
     fi
     
-    # Kiểm tra MySQL nếu có
-    if [[ $USE_MYSQL == "y" ]]; then
-        if docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q db; then
-            echo "✅ MySQL container đang chạy"
-        else
-            echo "❌ MySQL container không chạy"
-            ((errors++))
-        fi
-        
-        # Test MySQL connection
-        echo -n "🔍 Kiểm tra MySQL connection... "
-        if docker exec -i $(docker ps -q --filter "name=db") mysqladmin ping -h localhost --silent 2>/dev/null; then
-            echo "✅ OK"
-        else
-            echo "❌ MySQL chưa sẵn sàng"
-            ((errors++))
-        fi
-    fi
-    
-    # Kiểm tra port
-    if ss -tuln | grep -q ":$PORT"; then
-        echo "✅ Port $PORT đã bind"
+    # Kiểm tra admin
+    if curl -s --connect-timeout 10 "$BLOG_URL/ghost" >/dev/null; then
+        echo "✅ Admin panel khả dụng tại $BLOG_URL/ghost"
     else
-        echo "❌ Port $PORT chưa bind"
-        ((errors++))
+        echo "⚠️  Admin panel chưa khả dụng"
     fi
     
-    return $errors
+    return 0
 }
-
-# Chờ Ghost khởi động
-echo "⏳ Chờ Ghost khởi động (30 giây)..."
-sleep 30
-
-# Kiểm tra hệ thống
-check_system
-SYSTEM_OK=$?
-
-echo ""
-echo "=== KIỂM TRA KẾT NỐI ==="
-
-# Test các URL
-test_url "$LOCAL_URL" "Local"
-LOCAL_OK=$?
-
-test_url "$PUBLIC_URL" "Public IP"
-PUBLIC_OK=$?
-
-# Nếu domain khác IP thì test domain
-if [[ "$DOMAIN" != "$PUBLIC_IP" ]]; then
-    test_url "$DOMAIN_URL" "Domain"
-    DOMAIN_OK=$?
-else
-    DOMAIN_OK=$PUBLIC_OK
-fi
 
 # Hiển thị kết quả
-echo ""
-if [[ $SYSTEM_OK -eq 0 && ($LOCAL_OK -eq 0 || $PUBLIC_OK -eq 0) ]]; then
-    echo "🎉 === THÀNH CÔNG! GHOST ĐÃ CHẠY === 🎉"
-    echo ""
-    echo "📱 TRUY CẬP TRANG WEB:"
-    
-    if [[ $PUBLIC_OK -eq 0 ]]; then
-        echo "   🌐 Public: $PUBLIC_URL"
-        echo "   ⚙️ Admin:  $PUBLIC_URL/ghost"
-    fi
-    
-    if [[ $DOMAIN_OK -eq 0 && "$DOMAIN" != "$PUBLIC_IP" ]]; then
-        echo "   🏠 Domain: $DOMAIN_URL"
-        echo "   ⚙️ Admin:  $DOMAIN_URL/ghost"
-    fi
-    
-    echo ""
-    echo "✅ Tất cả hoạt động bình thường!"
-    echo "👆 Nhấp vào link bên trên để truy cập Ghost!"
-    
-else
-    echo "❌ === CÓ LỖI XẢY RA ==="
-    echo ""
-    echo "📋 THÔNG TIN DEBUG:"
-    echo "   🖥️ IP VPS: $PUBLIC_IP"
-    echo "   🌐 Domain: $DOMAIN"
-    echo "   📊 System OK: $([ $SYSTEM_OK -eq 0 ] && echo 'YES' || echo 'NO')"
-    echo "   🏠 Local OK: $([ $LOCAL_OK -eq 0 ] && echo 'YES' || echo 'NO')"
-    echo "   🌍 Public OK: $([ $PUBLIC_OK -eq 0 ] && echo 'YES' || echo 'NO')"
-    echo ""
-    echo "🔧 CÁCH KHẮC PHỤC TỰ ĐỘNG:"
-    echo ""
-    echo "1️⃣ Lỗi MySQL - Đổi sang SQLite (đơn giản):"
-    echo "   cd ~/ghost && docker compose down"
-    echo "   nano docker-compose.yml  # Xóa phần db, bỏ database__ trong ghost"
-    echo "   docker compose up -d"
-    echo ""
-    echo "2️⃣ Sửa MySQL:"
-    echo "   cd ~/ghost && docker compose down"
-    echo "   docker compose up -d db && sleep 60"
-    echo "   docker compose up -d ghost"
-    echo ""
-    echo "3️⃣ Khởi động lại Ghost:"
-    echo "   cd ~/ghost && docker compose restart"
-    echo ""
-    echo "4️⃣ Mở firewall:"
-    echo "   sudo ufw allow 2368"
-    echo "   sudo ufw reload"
-    echo ""
-    echo "4️⃣ Khởi động lại VPS:"
-    echo "   sudo reboot"
-    echo ""
-    echo "5️⃣ Chạy Ghost đơn giản:"
-    echo "   docker run -d --name ghost-backup -p 2368:2368 ghost:latest"
-    echo ""
-    echo "🌐 THỬ TRUY CẬP:"
-    echo "   Local:  $LOCAL_URL"
-    echo "   Public: $PUBLIC_URL"
-    echo "   Domain: $DOMAIN_URL"
-fi
+show_completion() {
+    print_header
+    echo -e "${GREEN}🎉 GHOST ĐÃ ĐƯỢC CÀI ĐẶT THÀNH CÔNG! 🎉${NC}"
+    echo
+    echo -e "${BLUE}Thông tin truy cập:${NC}"
+    echo "🌐 Website: $BLOG_URL"
+    echo "⚙️  Admin: $BLOG_URL/ghost"
+    echo
+    echo -e "${BLUE}Thông tin kỹ thuật:${NC}"
+    echo "📁 Thư mục: /var/www/$SITENAME"
+    echo "🗄️  Database: MySQL (ghost_prod)"
+    echo "🔒 SSL: $([ $USE_SSL = 'y' ] && echo 'Đã kích hoạt' || echo 'Chưa kích hoạt')"
+    echo "🌐 Web server: NGINX"
+    echo "⚙️  Process: systemd"
+    echo
+    echo -e "${YELLOW}Lệnh quản lý Ghost:${NC}"
+    echo "• Xem status: cd /var/www/$SITENAME && ghost status"
+    echo "• Khởi động: cd /var/www/$SITENAME && ghost start"
+    echo "• Dừng: cd /var/www/$SITENAME && ghost stop"
+    echo "• Khởi động lại: cd /var/www/$SITENAME && ghost restart"
+    echo "• Cập nhật: cd /var/www/$SITENAME && ghost update"
+    echo "• Xem logs: cd /var/www/$SITENAME && ghost log"
+    echo
+    echo -e "${YELLOW}Cấu hình bổ sung:${NC}"
+    echo "• SSL sau: cd /var/www/$SITENAME && ghost setup ssl"
+    echo "• Nginx config: /etc/nginx/sites-available/$SITENAME-ssl.conf"
+    echo "• Ghost config: /var/www/$SITENAME/config.production.json"
+    echo
+    echo -e "${GREEN}Bây giờ truy cập $BLOG_URL/ghost để tạo tài khoản admin!${NC}"
+}
 
-echo ""
-echo "📋 === LỆNH HỮU ÍCH ==="
-echo "🔍 Kiểm tra:"
-echo "   docker ps                           # Xem containers"
-echo "   curl $PUBLIC_URL                    # Test từ terminal"
-echo "   ss -tuln | grep $PORT               # Kiểm tra port"
-echo ""
-echo "🔧 Quản lý:"
-echo "   cd ~/ghost && docker compose logs   # Xem logs"
-echo "   cd ~/ghost && docker compose down   # Dừng Ghost"
-echo "   cd ~/ghost && docker compose up -d  # Khởi động Ghost"
-echo "   docker compose pull && docker compose up -d  # Cập nhật"
-echo ""
-echo "📁 Files: ~/ghost/docker-compose.yml"
-echo "🆔 IP công khai: $PUBLIC_IP"
-echo "🔌 Port: $PORT"
-echo ""
-echo "🔄 === TÙY CHỌN BỔ SUNG ==="
-echo "1) Restore từ backup"
-echo "2) Tạo backup ngay"
-echo "3) Xem logs real-time"
-echo ""
-read -p "Chọn tùy chọn (Enter để bỏ qua): " extra_choice
+# Main function
+main() {
+    print_header
+    print_status "Bắt đầu cài đặt Ghost theo hướng dẫn chính thức..."
+    
+    check_user
+    check_os
+    gather_info
+    check_existing
+    update_system
+    install_nginx
+    install_mysql
+    install_nodejs
+    install_ghost_cli
+    install_ghost
+    
+    if verify_installation; then
+        show_completion
+    else
+        print_error "Cài đặt có lỗi. Kiểm tra logs:"
+        echo "cd /var/www/$SITENAME && ghost log"
+    fi
+}
 
-case $extra_choice in
-    1)
-        restore_from_backup
-        echo "🔄 Khởi động lại Ghost để áp dụng backup..."
-        cd ~/ghost && docker compose restart
-        ;;
-    2)
-        echo "💾 Tạo backup..."
-        backup_dir="$HOME/ghost-backup-$(date +%Y%m%d_%H%M%S)"
-        cp -r "$HOME/ghost" "$backup_dir"
-        if docker volume ls | grep -q ghost_content; then
-            docker run --rm -v ghost_content:/data -v "$backup_dir":/backup alpine tar czf /backup/ghost_content.tar.gz -C /data .
-        fi
-        echo "✅ Backup tạo tại: $backup_dir"
-        ;;
-    3)
-        echo "📊 Xem logs (Ctrl+C để thoát)..."
-        cd ~/ghost && docker compose logs -f
-        ;;
-    *)
-        echo "⏩ Hoàn tất!"
-        ;;
-esac
+# Chạy script
+main "$@"
