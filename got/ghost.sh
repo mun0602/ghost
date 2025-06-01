@@ -39,37 +39,71 @@ print_header() {
 show_usage() {
     echo "Cách sử dụng:"
     echo ""
-    echo "🔧 CHẠY VỚI ROOT (khuyên dùng):"
+    echo "🔧 CÁCH 1: CHẠY VỚI ROOT (KHUYÊN DÙNG - DỄ NHẤT):"
     echo "   sudo ./ghost-official-install.sh"
-    echo "   → Script sẽ tự tạo user mới và cài đặt"
+    echo "   → Script tự tạo user mới và cài đặt hoàn toàn tự động"
+    echo "   → Không cần tạo user trước"
+    echo "   → Không cần cấu hình sudo"
     echo ""
-    echo "👤 CHẠY VỚI USER THƯỜNG:"
+    echo "🔧 CÁCH 2: CHẠY VỚI USER THƯỜNG:"
     echo "   ./ghost-official-install.sh"
-    echo "   → Kiểm tra user hiện tại và tiếp tục"
+    echo "   → User phải có quyền sudo"
+    echo "   → Kiểm tra: sudo -l"
+    echo ""
+    echo "🔧 CÁCH 3: TẠO USER TRƯỚC RỒI CHẠY:"
+    echo "   sudo adduser myuser"
+    echo "   sudo usermod -aG sudo myuser"
+    echo "   su - myuser"
+    echo "   ./ghost-official-install.sh"
     echo ""
     echo "📋 YÊU CẦU:"
     echo "   • Ubuntu 20.04/22.04/24.04"
-    echo "   • Kết nối internet"
-    echo "   • Domain đã trỏ về IP VPS"
+    echo "   • Kết nối internet ổn định"
+    echo "   • Domain đã trỏ về IP VPS (cho SSL)"
     echo "   • Port 80, 443, 2368 mở"
+    echo ""
+    echo "❓ TẠI SAO CẦN USER RIÊNG:"
+    echo "   • Ghost-CLI không hoạt động với root"
+    echo "   • Bảo mật: mỗi service một user"
+    echo "   • Production best practice"
+    echo ""
+    echo "🆘 KHẮC PHỤC LỖI SUDO:"
+    echo "   • Thêm sudo: sudo usermod -aG sudo \$USER"
+    echo "   • Logout/login lại: exit && ssh user@server"  
+    echo "   • Hoặc: newgrp sudo"
     echo ""
 }
 
 # Kiểm tra quyền root và tạo user
 check_user() {
     if [[ $EUID -eq 0 ]]; then
-        print_warning "Đang chạy với quyền root"
+        print_status "Đang chạy với quyền root - OK!"
+        echo
+        echo -e "${YELLOW}⚠️  TẠI SAO CẦN USER RIÊNG?${NC}"
+        echo "• Ghost không nên chạy với root vì lý do bảo mật"
+        echo "• Ghost-CLI yêu cầu user thường (không phải root)"
+        echo "• Production best practice: dùng user riêng cho mỗi service"
         echo
         echo "Tùy chọn:"
-        echo "1) Tạo user mới tự động"
+        echo "1) Tạo user mới tự động (khuyên dùng)"
         echo "2) Sử dụng user hiện có"
-        echo "3) Hủy"
-        read -p "Chọn (1/2/3): " user_choice
+        echo "3) Tiếp tục với root (không khuyên)"
+        echo "4) Hủy"
+        read -p "Chọn (1/2/3/4): " user_choice
         
         case $user_choice in
             1) create_new_user ;;
             2) switch_to_existing_user ;;
-            3) echo "❌ Hủy!"; exit 0 ;;
+            3) 
+                print_warning "Tiếp tục với root - KHÔNG KHUYÊN DÙNG!"
+                print_warning "Ghost có thể hoạt động không ổn định"
+                read -p "Bạn có chắc? (y/N): " confirm_root
+                if [[ ! $confirm_root =~ ^[Yy]$ ]]; then
+                    exit 0
+                fi
+                # Tiếp tục với root
+                ;;
+            4) echo "❌ Hủy!"; exit 0 ;;
             *) print_error "Lựa chọn không hợp lệ!"; exit 1 ;;
         esac
     else
@@ -98,9 +132,19 @@ create_new_user() {
             exit 1
         fi
     else
-        # Tạo user mới
+        # Tạo user mới với password tự động
         print_status "Tạo user: $NEW_USER"
-        adduser --gecos "" "$NEW_USER"
+        
+        # Tạo password ngẫu nhiên cho user
+        NEW_USER_PASSWORD=$(openssl rand -base64 12)
+        
+        # Tạo user không interactive
+        useradd -m -s /bin/bash "$NEW_USER"
+        echo "$NEW_USER:$NEW_USER_PASSWORD" | chpasswd
+        
+        echo "✅ User $NEW_USER đã được tạo"
+        echo "🔑 Password: $NEW_USER_PASSWORD"
+        echo "📝 (Ghi nhớ để login SSH sau này)"
         
         if [[ $? -ne 0 ]]; then
             print_error "Không thể tạo user!"
@@ -110,9 +154,10 @@ create_new_user() {
     
     # Thêm vào sudo group
     usermod -aG sudo "$NEW_USER"
+    echo "✅ Đã thêm $NEW_USER vào sudo group"
     
-    # Chuyển sang user mới và chạy lại script
-    print_status "Chuyển sang user: $NEW_USER"
+    # Tạo script cho user mới và chạy
+    print_status "Tiếp tục cài đặt với user: $NEW_USER"
     
     # Copy script đến home của user mới
     local script_path="/home/$NEW_USER/ghost-install.sh"
@@ -120,8 +165,12 @@ create_new_user() {
     chown "$NEW_USER:$NEW_USER" "$script_path"
     chmod +x "$script_path"
     
-    print_status "Tiếp tục cài đặt với user: $NEW_USER"
-    su - "$NEW_USER" -c "$script_path --continue"
+    # Chạy script với user mới (không cần su interactively)
+    print_status "Chuyển sang user $NEW_USER và tiếp tục..."
+    
+    # Export các biến môi trường để user mới có thể dùng
+    export GHOST_AUTO_CONTINUE=1
+    runuser -l "$NEW_USER" -c "$script_path --continue"
     exit 0
 }
 
@@ -131,23 +180,35 @@ switch_to_existing_user() {
     
     # Hiển thị danh sách users
     echo "Danh sách users có thể sử dụng:"
-    local users=($(awk -F: '$3 >= 1000 && $3 < 65534 {print $1}' /etc/passwd))
+    local users=($(awk -F: '$3 >= 1000 && $3 < 65534 && $1 != "nobody" {print $1}' /etc/passwd))
     
     if [[ ${#users[@]} -eq 0 ]]; then
-        print_error "Không tìm thấy user phù hợp!"
-        create_new_user
+        print_warning "Không tìm thấy user phù hợp!"
+        echo "Tạo user mới thay thế?"
+        read -p "(y/n): " create_new
+        if [[ $create_new =~ ^[Yy]$ ]]; then
+            create_new_user
+        else
+            exit 1
+        fi
         return
     fi
     
     local i=1
     for user in "${users[@]}"; do
-        echo "$i) $user"
+        # Hiển thị thêm thông tin user
+        local user_info=$(getent passwd "$user" | cut -d: -f5)
+        echo "$i) $user $([ -n "$user_info" ] && echo "($user_info)")"
         ((i++))
     done
+    echo "0) Tạo user mới"
     
-    read -p "Chọn user (1-${#users[@]}): " user_index
+    read -p "Chọn user (0-${#users[@]}): " user_index
     
-    if [[ $user_index -lt 1 || $user_index -gt ${#users[@]} ]]; then
+    if [[ $user_index -eq 0 ]]; then
+        create_new_user
+        return
+    elif [[ $user_index -lt 1 || $user_index -gt ${#users[@]} ]]; then
         print_error "Lựa chọn không hợp lệ!"
         exit 1
     fi
@@ -156,6 +217,7 @@ switch_to_existing_user() {
     
     # Đảm bảo user có sudo
     usermod -aG sudo "$selected_user" 2>/dev/null || true
+    echo "✅ Đã thêm $selected_user vào sudo group"
     
     # Copy script và chuyển user
     local script_path="/home/$selected_user/ghost-install.sh"
@@ -164,7 +226,8 @@ switch_to_existing_user() {
     chmod +x "$script_path"
     
     print_status "Chuyển sang user: $selected_user"
-    su - "$selected_user" -c "$script_path --continue"
+    export GHOST_AUTO_CONTINUE=1
+    runuser -l "$selected_user" -c "$script_path --continue"
     exit 0
 }
 
@@ -172,27 +235,53 @@ switch_to_existing_user() {
 check_current_user() {
     if [[ "$USER" == "ghost" ]]; then
         print_error "Không được dùng user tên 'ghost'!"
-        print_warning "Tạo user mới hoặc đổi tên user hiện tại"
+        print_warning "Ghost-CLI không hoạt động với user tên 'ghost'"
+        echo
+        echo "Giải pháp:"
+        echo "1) Tạo user mới: sudo adduser myuser && sudo usermod -aG sudo myuser"
+        echo "2) Đổi tên user hiện tại"
+        echo "3) Chạy script với root để tự tạo user"
         exit 1
     fi
     
     # Kiểm tra sudo
-    if ! sudo -n true 2>/dev/null; then
-        print_warning "User hiện tại cần quyền sudo"
-        print_status "Thử thêm quyền sudo..."
-        
-        # Thử thêm sudo (cần nhập password)
-        echo "Nhập password để thêm quyền sudo:"
-        su -c "usermod -aG sudo $USER" root
-        
-        # Kiểm tra lại
-        if ! sudo -n true 2>/dev/null; then
-            print_error "Vẫn không có quyền sudo. Hãy logout/login lại hoặc chạy: newgrp sudo"
-            exit 1
-        fi
+    print_status "Kiểm tra quyền sudo cho user: $USER"
+    
+    if sudo -n true 2>/dev/null; then
+        print_status "✅ User $USER có quyền sudo"
+        return 0
     fi
     
-    print_status "User $USER đã sẵn sàng"
+    print_warning "User $USER chưa có quyền sudo"
+    echo
+    echo "Cách khắc phục:"
+    echo "1) Thêm sudo: su -c 'usermod -aG sudo $USER' root"
+    echo "2) Logout/login lại: exit && ssh user@server"
+    echo "3) Chạy: newgrp sudo"
+    echo "4) Hoặc chạy script với root để tự tạo user mới"
+    echo
+    
+    read -p "Thử thêm quyền sudo ngay? (cần password root) (y/n): " try_sudo
+    
+    if [[ $try_sudo =~ ^[Yy]$ ]]; then
+        echo "Nhập password root để thêm quyền sudo:"
+        if su -c "usermod -aG sudo $USER" root; then
+            echo "✅ Đã thêm quyền sudo"
+            echo "⚠️  Cần logout/login lại để có hiệu lực"
+            echo
+            read -p "Tiếp tục? (script có thể lỗi nếu chưa logout/login) (y/n): " continue_anyway
+            if [[ ! $continue_anyway =~ ^[Yy]$ ]]; then
+                echo "Hãy logout/login rồi chạy lại script"
+                exit 0
+            fi
+        else
+            print_error "Không thể thêm quyền sudo"
+            exit 1
+        fi
+    else
+        print_error "Cần quyền sudo để tiếp tục"
+        exit 1
+    fi
 }
 
 # Kiểm tra OS
